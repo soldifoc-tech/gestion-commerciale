@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Gestion Commerciale - POS Offline</title>
+
+  <!-- PWA -->
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="GestionCom" />
+  <meta name="description" content="Logiciel de gestion commerciale offline-first : Caisse, Stocks et Dettes" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { 50:'#eff6ff', 100:'#dbeafe', 500:'#3b82f6', 600:'#2563eb', 700:'#1d4ed8' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f8fafc; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .product-card:active { transform: scale(0.97); }
+    .offline-indicator { position: fixed; top: 0; left: 0; right: 0; z-index: 100; transform: translateY(-100%); transition: transform 0.3s ease; }
+    .offline-indicator.show { transform: translateY(0); }
+    .safe-area-pb { padding-bottom: env(safe-area-inset-bottom, 0px); }
+    .photo-preview { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+
+  <!-- Bannière hors-ligne -->
+  <div id="offline-banner" class="offline-indicator bg-amber-500 text-white text-center text-sm py-2 font-medium">
+    Mode hors-ligne — Les données seront synchronisées dès le retour de la connexion
+  </div>
+
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR PC -->
+    <aside id="sidebar" class="hidden lg:flex flex-col w-64 bg-white border-r border-slate-200 flex-shrink-0">
+      <div class="px-6 py-5 border-b border-slate-100">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center text-white font-bold text-lg">GC</div>
+          <div>
+            <h1 class="font-bold text-slate-900 leading-tight">Gestion</h1>
+            <p class="text-xs text-slate-500">Commerciale</p>
+          </div>
+        </div>
+      </div>
+
+      <nav class="flex-1 px-3 py-4 space-y-1">
+        <button onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:bg-slate-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          Tableau de bord
+        </button>
+        <button onclick="switchTab('caisse')" data-tab="caisse" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:bg-slate-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          Caisse / POS
+        </button>
+        <button onclick="switchTab('stock')" data-tab="stock" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:bg-slate-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          Gestion Stock
+        </button>
+        <button onclick="switchTab('dettes')" data-tab="dettes" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:bg-slate-100">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          Carnet de Dettes
+        </button>
+      </nav>
+
+      <div class="px-4 py-4 border-t border-slate-100 space-y-3">
+        <div id="sync-status" class="flex items-center gap-2 text-sm">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+          <span class="text-slate-600 font-medium">Synchronisé</span>
+        </div>
+        <label class="flex items-center justify-between cursor-pointer">
+          <span class="text-sm text-slate-600">Mode hors-ligne</span>
+          <div class="relative">
+            <input type="checkbox" id="offline-toggle" class="sr-only peer" onchange="toggleOfflineMode(this.checked)">
+            <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+          </div>
+        </label>
+      </div>
+    </aside>
+
+    <!-- CONTENU PRINCIPAL -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+      <header class="lg:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center text-white font-bold text-sm">GC</div>
+          <span class="font-semibold text-slate-900">Gestion Commerciale</span>
+        </div>
+        <div id="sync-status-mobile" class="flex items-center gap-1.5 text-xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span class="text-slate-500">Sync</span>
+        </div>
+      </header>
+
+      <div class="flex-1 overflow-y-auto pb-20 lg:pb-0">
+
+        <!-- DASHBOARD -->
+        <section id="tab-dashboard" class="tab-content active p-4 md:p-6">
+          <div class="max-w-7xl mx-auto">
+            <h2 class="text-2xl font-bold text-slate-900 mb-6">Tableau de bord</h2>
+
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <p class="text-sm text-slate-500 mb-1">Ventes du jour</p>
+                <p class="text-2xl font-bold text-slate-900" id="kpi-ventes">0 FCFA</p>
+              </div>
+              <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <p class="text-sm text-slate-500 mb-1">Nombre de tickets</p>
+                <p class="text-2xl font-bold text-slate-900" id="kpi-tickets">0</p>
+              </div>
+              <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <p class="text-sm text-slate-500 mb-1">Alertes stock</p>
+                <p class="text-2xl font-bold text-amber-600" id="kpi-alertes">0</p>
+              </div>
+              <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <p class="text-sm text-slate-500 mb-1">Dettes clients</p>
+                <p class="text-2xl font-bold text-rose-600" id="kpi-dettes">0 FCFA</p>
+              </div>
+            </div>
+
+            <!-- Bénéfice Net sécurisé -->
+            <div class="bg-white rounded-xl border border-slate-200 p-5 mb-8 shadow-sm">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-slate-900 flex items-center gap-2">
+                  <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                  Bénéfice Net Théorique
+                </h3>
+                <button onclick="toggleBenefice()" id="btn-benefice" class="text-sm text-primary-600 font-medium hover:underline">Afficher</button>
+              </div>
+              <div id="benefice-content" class="hidden">
+                <p class="text-3xl font-bold text-emerald-600" id="kpi-benefice">0 FCFA</p>
+                <p class="text-sm text-slate-500 mt-1">Calculé à partir des ventes et prix d'achat (visible Propriétaire)</p>
+              </div>
+              <div id="benefice-lock" class="text-sm text-slate-500">Cliquez sur « Afficher » et saisissez le code propriétaire</div>
+            </div>
+
+            <!-- Alertes -->
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div class="px-5 py-4 border-b border-slate-100">
+                <h3 class="font-semibold text-slate-900">Alertes stock bas</h3>
+              </div>
+              <div id="liste-alertes" class="divide-y divide-slate-100">
+                <div class="px-5 py-4 text-sm text-slate-500 text-center">Aucune alerte pour le moment</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CAISSE -->
+        <section id="tab-caisse" class="tab-content h-full">
+          <div class="h-full flex flex-col lg:flex-row">
+            <div class="flex-1 overflow-y-auto p-4 md:p-5">
+              <div class="mb-4">
+                <div class="relative">
+                  <svg class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                  <input type="text" id="search-produits" placeholder="Rechercher un produit..." 
+                         class="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                         oninput="filtrerProduits(this.value)">
+                </div>
+              </div>
+              <div id="grille-produits" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3"></div>
+            </div>
+
+            <div class="w-full lg:w-96 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col flex-shrink-0 max-h-[50vh] lg:max-h-none">
+              <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="font-semibold text-slate-900">Ticket en cours</h3>
+                <button onclick="viderPanier()" class="text-sm text-rose-600 hover:underline">Vider</button>
+              </div>
+              <div id="panier-liste" class="flex-1 overflow-y-auto p-4 space-y-3">
+                <p class="text-sm text-slate-400 text-center py-8">Le panier est vide</p>
+              </div>
+              <div class="border-t border-slate-100 p-4 space-y-4">
+                <div class="flex justify-between items-center">
+                  <span class="text-slate-600">Total</span>
+                  <span class="text-2xl font-bold text-slate-900" id="panier-total">0 FCFA</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                  <button onclick="encaisser('especes')" class="py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm font-medium transition">Espèces</button>
+                  <button onclick="encaisser('wave')" class="py-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-medium transition">Wave</button>
+                  <button onclick="encaisser('orange')" class="py-2.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-sm font-medium transition">Orange</button>
+                  <button onclick="encaisser('airtel')" class="py-2.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium transition">Airtel</button>
+                  <button onclick="encaisser('nita')" class="py-2.5 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 text-sm font-medium transition">m'y nita</button>
+                  <button onclick="encaisser('amanata')" class="py-2.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-sm font-medium transition">Amanata</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- STOCK -->
+        <section id="tab-stock" class="tab-content p-4 md:p-6">
+          <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <h2 class="text-2xl font-bold text-slate-900">Gestion de Stock</h2>
+              <button onclick="ouvrirModalProduit()" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-xl transition shadow-sm">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Ajouter un produit
+              </button>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th class="text-left px-4 py-3 font-semibold text-slate-600">Photo</th>
+                      <th class="text-left px-4 py-3 font-semibold text-slate-600">Produit</th>
+                      <th class="text-left px-4 py-3 font-semibold text-slate-600">Prix vente</th>
+                      <th class="text-left px-4 py-3 font-semibold text-slate-600">Stock</th>
+                      <th class="text-left px-4 py-3 font-semibold text-slate-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-stock" class="divide-y divide-slate-100"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- DETTES -->
+        <section id="tab-dettes" class="tab-content p-4 md:p-6">
+          <div class="max-w-4xl mx-auto">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <h2 class="text-2xl font-bold text-slate-900">Carnet de Dettes</h2>
+              <button onclick="ouvrirModalDette()" class="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-xl transition shadow-sm">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Nouvelle dette
+              </button>
+            </div>
+            <div class="mb-5">
+              <input type="text" id="search-dettes" placeholder="Rechercher un client..." 
+                     class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                     oninput="filtrerDettes(this.value)">
+            </div>
+            <div id="liste-dettes" class="space-y-3"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around py-2 z-50 safe-area-pb">
+    <button onclick="switchTab('dashboard')" data-tab="dashboard" class="bottom-nav-item flex flex-col items-center gap-1 px-3 py-1 text-slate-500">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+      <span class="text-[10px] font-medium">Dashboard</span>
+    </button>
+    <button onclick="switchTab('caisse')" data-tab="caisse" class="bottom-nav-item flex flex-col items-center gap-1 px-3 py-1 text-slate-500">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+      <span class="text-[10px] font-medium">Caisse</span>
+    </button>
+    <button onclick="switchTab('stock')" data-tab="stock" class="bottom-nav-item flex flex-col items-center gap-1 px-3 py-1 text-slate-500">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      <span class="text-[10px] font-medium">Stock</span>
+    </button>
+    <button onclick="switchTab('dettes')" data-tab="dettes" class="bottom-nav-item flex flex-col items-center gap-1 px-3 py-1 text-slate-500">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+      <span class="text-[10px] font-medium">Dettes</span>
+    </button>
+  </nav>
+
+  <!-- MODALE PRODUIT -->
+  <div id="modal-produit" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/40" onclick="fermerModalProduit()"></div>
+    <div class="absolute inset-x-0 bottom-0 sm:inset-0 sm:flex sm:items-center sm:justify-center p-4">
+      <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
+        <div class="sticky top-0 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between">
+          <h3 class="font-semibold text-lg text-slate-900" id="modal-produit-titre">Nouveau produit</h3>
+          <button onclick="fermerModalProduit()" class="p-1.5 rounded-lg hover:bg-slate-100">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <form id="form-produit" class="p-5 space-y-4" onsubmit="soumettreProduit(event)">
+          <!-- Champ caché pour l'édition -->
+          <input type="hidden" name="id" id="produit-id" value="">
+          
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Nom du produit *</label>
+            <input type="text" name="nom" required class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Prix de vente (FCFA) *</label>
+              <input type="number" name="prix" required min="0" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Quantité en stock *</label>
+              <input type="number" name="stock" required min="0" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Prix d'achat (FCFA)</label>
+            <input type="number" name="prixAchat" min="0" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Photos du produit</label>
+            <input type="file" name="photos" id="input-photos" multiple accept="image/*" 
+                   class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                   onchange="previewPhotos(this)">
+            <div id="preview-photos" class="flex flex-wrap gap-2 mt-3"></div>
+            <p class="text-xs text-slate-400 mt-1">Plusieurs images possibles (stockées localement en base64)</p>
+          </div>
+          <div class="flex gap-3 pt-2">
+            <button type="button" onclick="fermerModalProduit()" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50">Annuler</button>
+            <button type="submit" class="flex-1 py-2.5 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700">Enregistrer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE DETTE -->
+  <div id="modal-dette" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/40" onclick="fermerModalDette()"></div>
+    <div class="absolute inset-x-0 bottom-0 sm:inset-0 sm:flex sm:items-center sm:justify-center p-4">
+      <div class="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
+        <div class="sticky top-0 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between">
+          <h3 class="font-semibold text-lg text-slate-900">Nouvelle dette</h3>
+          <button onclick="fermerModalDette()" class="p-1.5 rounded-lg hover:bg-slate-100">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <form id="form-dette" class="p-5 space-y-4" onsubmit="soumettreDette(event)">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Nom du client *</label>
+            <input type="text" name="client" required class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Téléphone</label>
+            <input type="tel" name="telephone" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Montant dû (FCFA) *</label>
+            <input type="number" name="montant" required min="0" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Note / Produits</label>
+            <textarea name="note" rows="2" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"></textarea>
+          </div>
+          <div class="flex gap-3 pt-2">
+            <button type="button" onclick="fermerModalDette()" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50">Annuler</button>
+            <button type="submit" class="flex-1 py-2.5 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700">Enregistrer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-xl text-sm font-medium shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-50"></div>
+
+  <script>
+    // ============================================================
+    // ÉTAT GLOBAL + PERSISTANCE localStorage
+    // ============================================================
+    let isOffline = false;
+    let currentTab = 'dashboard';
+    let panier = [];
+    let produits = [];
+    let dettes = [];
+    let ventesDuJour = { total: 0, tickets: 0, marge: 0 }; // pour les KPI
+    let beneficeVisible = false;
+    let photosTemporaires = []; // base64 des photos en cours d'ajout
+
+    const STORAGE_KEYS = {
+      produits: 'gc_produits',
+      dettes: 'gc_dettes',
+      ventes: 'gc_ventes_jour',
+      offline: 'gc_offline'
+    };
+
+    const PRODUITS_DEMO = [
+      { id: 1, nom: 'Riz 25kg', prix: 18500, stock: 12, prixAchat: 16000, photos: [] },
+      { id: 2, nom: 'Huile 5L', prix: 6500, stock: 8, prixAchat: 5200, photos: [] },
+      { id: 3, nom: 'Sucre 1kg', prix: 900, stock: 45, prixAchat: 700, photos: [] },
+      { id: 4, nom: 'Savon Marseille', prix: 350, stock: 30, prixAchat: 250, photos: [] },
+      { id: 5, nom: 'Lait en poudre', prix: 4200, stock: 5, prixAchat: 3500, photos: [] },
+      { id: 6, nom: 'Thé Lipton', prix: 1500, stock: 18, prixAchat: 1100, photos: [] },
+    ];
+
+    const DETTES_DEMO = [
+      { id: 1, client: 'Aïssata M.', telephone: '90 12 34 56', montant: 12500, note: '2 sacs de riz', date: '2026-10-28' },
+      { id: 2, client: 'Moussa K.', telephone: '96 78 90 12', montant: 4800, note: 'Huile + sucre', date: '2026-10-30' },
+    ];
+
+    // ============================================================
+    // PERSISTANCE
+    // ============================================================
+    function sauvegarder() {
+      try {
+        localStorage.setItem(STORAGE_KEYS.produits, JSON.stringify(produits));
+        localStorage.setItem(STORAGE_KEYS.dettes, JSON.stringify(dettes));
+        localStorage.setItem(STORAGE_KEYS.ventes, JSON.stringify(ventesDuJour));
+        localStorage.setItem(STORAGE_KEYS.offline, isOffline ? '1' : '0');
+      } catch (e) {
+        console.warn('localStorage plein ou indisponible', e);
+      }
+    }
+
+    function chargerDepuisStorage() {
+      try {
+        const p = localStorage.getItem(STORAGE_KEYS.produits);
+        const d = localStorage.getItem(STORAGE_KEYS.dettes);
+        const v = localStorage.getItem(STORAGE_KEYS.ventes);
+        const o = localStorage.getItem(STORAGE_KEYS.offline);
+
+        produits = p ? JSON.parse(p) : [...PRODUITS_DEMO];
+        dettes = d ? JSON.parse(d) : [...DETTES_DEMO];
+        ventesDuJour = v ? JSON.parse(v) : { total: 0, tickets: 0, marge: 0 };
+        isOffline = o === '1';
+      } catch (e) {
+        produits = [...PRODUITS_DEMO];
+        dettes = [...DETTES_DEMO];
+        ventesDuJour = { total: 0, tickets: 0, marge: 0 };
+      }
+    }
+
+    // ============================================================
+    // INITIALISATION
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      chargerDepuisStorage();
+
+      // Restaurer l'état offline
+      const toggle = document.getElementById('offline-toggle');
+      if (toggle) {
+        toggle.checked = isOffline;
+        if (isOffline) toggleOfflineMode(true, true); // true = skip save
+      }
+
+      renderGrilleProduits();
+      renderTableStock();
+      renderDettes();
+      mettreAJourKPIs();
+      switchTab('dashboard');
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('SW enregistré', reg.scope))
+          .catch(err => console.warn('SW erreur', err));
+      }
+    });
+
+    // ============================================================
+    // NAVIGATION
+    // ============================================================
+    function switchTab(tabName) {
+      currentTab = tabName;
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      const target = document.getElementById('tab-' + tabName);
+      if (target) target.classList.add('active');
+
+      document.querySelectorAll('.nav-item, .bottom-nav-item').forEach(btn => {
+        const isActive = btn.dataset.tab === tabName;
+        if (btn.classList.contains('nav-item')) {
+          btn.classList.toggle('bg-primary-50', isActive);
+          btn.classList.toggle('text-primary-700', isActive);
+          btn.classList.toggle('text-slate-600', !isActive);
+        } else {
+          btn.classList.toggle('text-primary-600', isActive);
+          btn.classList.toggle('text-slate-500', !isActive);
+        }
+      });
+    }
+
+    // ============================================================
+    // OFFLINE
+    // ============================================================
+    function toggleOfflineMode(checked, skipSave = false) {
+      isOffline = checked;
+      const banner = document.getElementById('offline-banner');
+      const statusEl = document.getElementById('sync-status');
+      const statusMobile = document.getElementById('sync-status-mobile');
+
+      if (isOffline) {
+        banner.classList.add('show');
+        statusEl.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span><span class="text-slate-600 font-medium">Hors ligne</span>';
+        statusMobile.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500"></span><span class="text-slate-500">Offline</span>';
+      } else {
+        banner.classList.remove('show');
+        statusEl.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span><span class="text-slate-600 font-medium">Synchronisé</span>';
+        statusMobile.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="text-slate-500">Sync</span>';
+        declencherSynchro();
+      }
+      if (!skipSave) sauvegarder();
+    }
+
+    // ============================================================
+    // API PRÊTES (à brancher sur Workers + D1)
+    // ============================================================
+    async function chargerProduits() {
+      // En production : const res = await fetch(API + '/api/produits'); produits = await res.json();
+      renderGrilleProduits();
+      renderTableStock();
+      return produits;
+    }
+
+    async function enregistrerVente(panierItems, modePaiement) {
+      console.log('enregistrerVente()', { panierItems, modePaiement, offline: isOffline });
+      // TODO: POST vers Worker ou file d'attente IndexedDB
+      return { success: true };
+    }
+
+    async function ajouterProduit(data) {
+      console.log('ajouterProduit()', data);
+      // TODO: POST multipart vers Worker + R2
+      return data;
+    }
+
+    async function declencherSynchro() {
+      console.log('declencherSynchro()');
+      if (isOffline) return;
+      showToast('Synchronisation effectuée');
+    }
+
+    // ============================================================
+    // PHOTOS (base64 pour offline)
+    // ============================================================
+    function previewPhotos(input) {
+      photosTemporaires = [];
+      const preview = document.getElementById('preview-photos');
+      preview.innerHTML = '';
+
+      const files = Array.from(input.files || []);
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          photosTemporaires.push(e.target.result);
+          const img = document.createElement('img');
+          img.src = e.target.result;
+          img.className = 'photo-preview border border-slate-200';
+          preview.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // ============================================================
+    // CAISSE
+    // ============================================================
+    function renderGrilleProduits(filtre = '') {
+      const container = document.getElementById('grille-produits');
+      const liste = produits.filter(p => p.nom.toLowerCase().includes(filtre.toLowerCase()));
+
+      if (liste.length === 0) {
+        container.innerHTML = '<p class="col-span-full text-center text-slate-400 py-10">Aucun produit trouvé</p>';
+        return;
+      }
+
+      container.innerHTML = liste.map(p => `
+        <button onclick="ajouterAuPanier(${p.id})" class="product-card bg-white rounded-xl border border-slate-200 p-3 text-left shadow-sm hover:shadow-md transition ${p.stock <= 5 ? 'border-rose-300 bg-rose-50/30' : ''}">
+          <div class="aspect-square bg-slate-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+            ${p.photos && p.photos.length > 0
+              ? `<img src="${p.photos[0]}" class="w-full h-full object-cover" alt="${p.nom}">`
+              : `<svg class="w-10 h-10 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>`}
+          </div>
+          <p class="font-medium text-sm text-slate-900 truncate">${p.nom}</p>
+          <p class="text-primary-600 font-bold text-sm">${formatMontant(p.prix)}</p>
+          <p class="text-xs ${p.stock <= 5 ? 'text-rose-600 font-medium' : 'text-slate-400'}">Stock: ${p.stock}</p>
+        </button>
+      `).join('');
+    }
+
+    function filtrerProduits(val) {
+      renderGrilleProduits(val);
+    }
+
+    function ajouterAuPanier(id) {
+      const produit = produits.find(p => p.id === id);
+      if (!produit || produit.stock <= 0) {
+        showToast('Stock insuffisant');
+        return;
+      }
+      const existant = panier.find(item => item.id === id);
+      if (existant) {
+        if (existant.quantite >= produit.stock) {
+          showToast('Stock maximum atteint');
+          return;
+        }
+        existant.quantite += 1;
+      } else {
+        panier.push({ id: produit.id, nom: produit.nom, prix: produit.prix, prixAchat: produit.prixAchat || 0, quantite: 1 });
+      }
+      renderPanier();
+    }
+
+    function renderPanier() {
+      const container = document.getElementById('panier-liste');
+      if (panier.length === 0) {
+        container.innerHTML = '<p class="text-sm text-slate-400 text-center py-8">Le panier est vide</p>';
+        document.getElementById('panier-total').textContent = '0 FCFA';
+        return;
+      }
+      container.innerHTML = panier.map((item, idx) => `
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-900 truncate">${item.nom}</p>
+            <p class="text-xs text-slate-500">${formatMontant(item.prix)} × ${item.quantite}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="modifierQuantite(${idx}, -1)" class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold">−</button>
+            <span class="text-sm font-medium w-5 text-center">${item.quantite}</span>
+            <button onclick="modifierQuantite(${idx}, 1)" class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold">+</button>
+          </div>
+        </div>
+      `).join('');
+      document.getElementById('panier-total').textContent = formatMontant(calculerTotal());
+    }
+
+    function modifierQuantite(index, delta) {
+      const item = panier[index];
+      const produit = produits.find(p => p.id === item.id);
+      if (delta > 0 && produit && item.quantite >= produit.stock) {
+        showToast('Stock maximum atteint');
+        return;
+      }
+      item.quantite += delta;
+      if (item.quantite <= 0) panier.splice(index, 1);
+      renderPanier();
+    }
+
+    function viderPanier() {
+      panier = [];
+      renderPanier();
+    }
+
+    function calculerTotal() {
+      return panier.reduce((sum, item) => sum + item.prix * item.quantite, 0);
+    }
+
+    async function encaisser(mode) {
+      if (panier.length === 0) {
+        showToast('Le panier est vide');
+        return;
+      }
+
+      const total = calculerTotal();
+      const marge = panier.reduce((s, i) => s + (i.prix - (i.prixAchat || 0)) * i.quantite, 0);
+
+      await enregistrerVente([...panier], mode);
+
+      // Mise à jour stock local
+      panier.forEach(item => {
+        const p = produits.find(pr => pr.id === item.id);
+        if (p) p.stock = Math.max(0, p.stock - item.quantite);
+      });
+
+      // KPI
+      ventesDuJour.total += total;
+      ventesDuJour.tickets += 1;
+      ventesDuJour.marge += marge;
+
+      panier = [];
+      renderPanier();
+      renderGrilleProduits();
+      renderTableStock();
+      mettreAJourKPIs();
+      sauvegarder();
+      showToast(`Vente enregistrée (${mode}) — ${formatMontant(total)}`);
+    }
+
+    // ============================================================
+    // STOCK
+    // ============================================================
+    function renderTableStock() {
+      const tbody = document.getElementById('table-stock');
+      if (produits.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400">Aucun produit</td></tr>';
+        return;
+      }
+      tbody.innerHTML = produits.map(p => `
+        <tr class="hover:bg-slate-50">
+          <td class="px-4 py-3">
+            <div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden">
+              ${p.photos && p.photos[0]
+                ? `<img src="${p.photos[0]}" class="w-full h-full object-cover">`
+                : `<svg class="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>`}
+            </div>
+          </td>
+          <td class="px-4 py-3 font-medium text-slate-900">${p.nom}</td>
+          <td class="px-4 py-3">${formatMontant(p.prix)}</td>
+          <td class="px-4 py-3 ${p.stock <= 5 ? 'text-rose-600 font-semibold' : ''}">${p.stock}</td>
+          <td class="px-4 py-3 space-x-2">
+            <button onclick="editerProduit(${p.id})" class="text-primary-600 hover:underline text-sm">Modifier</button>
+            <button onclick="supprimerProduit(${p.id})" class="text-rose-600 hover:underline text-sm">Suppr.</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function ouvrirModalProduit(produit = null) {
+      const form = document.getElementById('form-produit');
+      form.reset();
+      photosTemporaires = [];
+      document.getElementById('preview-photos').innerHTML = '';
+      document.getElementById('produit-id').value = '';
+
+      if (produit) {
+        document.getElementById('modal-produit-titre').textContent = 'Modifier le produit';
+        document.getElementById('produit-id').value = produit.id;
+        form.nom.value = produit.nom;
+        form.prix.value = produit.prix;
+        form.stock.value = produit.stock;
+        form.prixAchat.value = produit.prixAchat || '';
+        // Afficher les photos existantes
+        if (produit.photos && produit.photos.length) {
+          photosTemporaires = [...produit.photos];
+          const preview = document.getElementById('preview-photos');
+          produit.photos.forEach(src => {
+            const img = document.createElement('img');
+            img.src = src;
+            img.className = 'photo-preview border border-slate-200';
+            preview.appendChild(img);
+          });
+        }
+      } else {
+        document.getElementById('modal-produit-titre').textContent = 'Nouveau produit';
+      }
+      document.getElementById('modal-produit').classList.remove('hidden');
+    }
+
+    function fermerModalProduit() {
+      document.getElementById('modal-produit').classList.add('hidden');
+      photosTemporaires = [];
+    }
+
+    async function soumettreProduit(e) {
+      e.preventDefault();
+      const form = e.target;
+      const id = form.id.value ? Number(form.id.value) : null;
+
+      const data = {
+        nom: form.nom.value.trim(),
+        prix: Number(form.prix.value),
+        stock: Number(form.stock.value),
+        prixAchat: Number(form.prixAchat.value || 0),
+        photos: [...photosTemporaires]
+      };
+
+      if (id) {
+        // Mise à jour
+        const idx = produits.findIndex(p => p.id === id);
+        if (idx !== -1) {
+          produits[idx] = { ...produits[idx], ...data };
+          showToast('Produit modifié');
+        }
+      } else {
+        // Création
+        const nouveau = { id: Date.now(), ...data };
+        produits.push(nouveau);
+        await ajouterProduit(nouveau);
+        showToast('Produit ajouté');
+      }
+
+      renderGrilleProduits();
+      renderTableStock();
+      mettreAJourKPIs();
+      sauvegarder();
+      fermerModalProduit();
+    }
+
+    function editerProduit(id) {
+      const p = produits.find(pr => pr.id === id);
+      if (p) ouvrirModalProduit(p);
+    }
+
+    function supprimerProduit(id) {
+      if (!confirm('Supprimer ce produit ?')) return;
+      produits = produits.filter(p => p.id !== id);
+      renderGrilleProduits();
+      renderTableStock();
+      mettreAJourKPIs();
+      sauvegarder();
+      showToast('Produit supprimé');
+    }
+
+    // ============================================================
+    // DETTES
+    // ============================================================
+    function renderDettes(filtre = '') {
+      const container = document.getElementById('liste-dettes');
+      const liste = dettes.filter(d => d.client.toLowerCase().includes(filtre.toLowerCase()));
+      if (liste.length === 0) {
+        container.innerHTML = '<p class="text-center text-slate-400 py-10">Aucune dette enregistrée</p>';
+        return;
+      }
+      container.innerHTML = liste.map(d => `
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-semibold text-slate-900">${d.client}</p>
+              <p class="text-sm text-slate-500">${d.telephone || '—'} · ${d.date || ''}</p>
+              ${d.note ? `<p class="text-sm text-slate-600 mt-1">${d.note}</p>` : ''}
+            </div>
+            <div class="text-right">
+              <p class="text-lg font-bold text-rose-600">${formatMontant(d.montant)}</p>
+              <button onclick="reglerDette(${d.id})" class="text-xs text-primary-600 hover:underline mt-1">Régler</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function filtrerDettes(val) {
+      renderDettes(val);
+    }
+
+    function ouvrirModalDette() {
+      document.getElementById('form-dette').reset();
+      document.getElementById('modal-dette').classList.remove('hidden');
+    }
+
+    function fermerModalDette() {
+      document.getElementById('modal-dette').classList.add('hidden');
+    }
+
+    function soumettreDette(e) {
+      e.preventDefault();
+      const form = e.target;
+      const nouvelle = {
+        id: Date.now(),
+        client: form.client.value.trim(),
+        telephone: form.telephone.value,
+        montant: Number(form.montant.value),
+        note: form.note.value,
+        date: new Date().toISOString().slice(0, 10)
+      };
+      dettes.unshift(nouvelle);
+      renderDettes();
+      mettreAJourKPIs();
+      sauvegarder();
+      fermerModalDette();
+      showToast('Dette enregistrée');
+    }
+
+    function reglerDette(id) {
+      dettes = dettes.filter(d => d.id !== id);
+      renderDettes();
+      mettreAJourKPIs();
+      sauvegarder();
+      showToast('Dette réglée');
+    }
+
+    // ============================================================
+    // DASHBOARD
+    // ============================================================
+    function mettreAJourKPIs() {
+      document.getElementById('kpi-ventes').textContent = formatMontant(ventesDuJour.total);
+      document.getElementById('kpi-tickets').textContent = ventesDuJour.tickets;
+      document.getElementById('kpi-alertes').textContent = produits.filter(p => p.stock <= 5).length;
+      const totalDettes = dettes.reduce((s, d) => s + d.montant, 0);
+      document.getElementById('kpi-dettes').textContent = formatMontant(totalDettes);
+
+      // Alertes stock bas
+      const alertes = produits.filter(p => p.stock <= 5);
+      const cont = document.getElementById('liste-alertes');
+      if (alertes.length === 0) {
+        cont.innerHTML = '<div class="px-5 py-4 text-sm text-slate-500 text-center">Aucune alerte pour le moment</div>';
+      } else {
+        cont.innerHTML = alertes.map(p => `
+          <div class="px-5 py-3 flex items-center justify-between">
+            <div>
+              <p class="font-medium text-slate-900">${p.nom}</p>
+              <p class="text-sm text-rose-600">Stock restant : ${p.stock}</p>
+            </div>
+            <button onclick="editerProduit(${p.id}); switchTab('stock')" class="text-sm text-primary-600 hover:underline">Réapprovisionner</button>
+          </div>
+        `).join('');
+      }
+
+      // Mettre à jour le bénéfice affiché si visible
+      if (beneficeVisible) {
+        document.getElementById('kpi-benefice').textContent = formatMontant(ventesDuJour.marge);
+      }
+    }
+
+    function toggleBenefice() {
+      if (beneficeVisible) {
+        document.getElementById('benefice-content').classList.add('hidden');
+        document.getElementById('benefice-lock').classList.remove('hidden');
+        document.getElementById('btn-benefice').textContent = 'Afficher';
+        beneficeVisible = false;
+        return;
+      }
+      const code = prompt('Code propriétaire :');
+      if (code === '1234' || code === 'proprio') {
+        document.getElementById('kpi-benefice').textContent = formatMontant(ventesDuJour.marge);
+        document.getElementById('benefice-content').classList.remove('hidden');
+        document.getElementById('benefice-lock').classList.add('hidden');
+        document.getElementById('btn-benefice').textContent = 'Masquer';
+        beneficeVisible = true;
+      } else if (code !== null) {
+        showToast('Code incorrect');
+      }
+    }
+
+    // ============================================================
+    // UTILS
+    // ============================================================
+    function formatMontant(n) {
+      return new Intl.NumberFormat('fr-FR').format(n || 0) + ' FCFA';
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 2500);
+    }
+  </script>
+</body>
+</html>
